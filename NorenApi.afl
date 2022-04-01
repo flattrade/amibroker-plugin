@@ -1,0 +1,139 @@
+_SECTION_BEGIN("Systematic Trading");
+// make sure you include the following in your AFL
+// SetBarsRequired ( sbrAll, sbrAll); 
+
+stg      = ParamStr("Strategy Name","Systematic Trading");
+flag     = ParamList("STATE","STOP|START");
+lasttime = StrFormat("%0.f",LastValue(BarIndex()));
+exch     = ParamList("Exchange","NSE|NFO|BSE|CDS");
+tsym     = ParamStr("TradingSymbol","XYZ-EQ"); 
+qty      = Param("Quantity",1,1,1000,1);
+prd      = ParamList("Product","I|C|M");
+
+uniq_name = Name()+GetChartID()+interval(2)+stg;
+
+function  NorenApiFireSignal(aiBuy,aiSell,aiShort,aiCover)
+{
+    loggedin =  NorenIsLoggedIn();
+    if ( loggedin == 0 )
+    {
+        //we need to login
+        loginflag  = StaticVarGetText("norenapi_login_flag");
+        if( loginflag  == "" )
+        {
+           _TRACE("norenApi sending login");
+           StaticVarSetText("norenapi_login_flag","login_sent");           
+           //NorenSendLogin param1 : endpoint
+           //param2 : api key
+           //param3 : vendor code
+           //param4 : imei
+           //param5 : user id
+           //param6 : password
+           //param7 : factor2 - dob/pan
+           //NorenSendLogin("https://piconnect.flattrade.in/PiConnectTP/",
+           //                 "6e9ba864e740280937ef2fa896d45bbe",
+           //                 "vendor_code",
+           //                 "imei_ami",
+           //                 "user",
+           //                 "password",
+           //                 "AIRPANMDI56");
+
+           //NorenSetSession param1 : endpoint
+           //param2 : user id
+           //param3 : session key
+           
+           //NorenSetSession("https://piconnect.flattrade.in/PiConnectTP/",
+           //                "user",
+           //                "f8a580ccca38d8bc7d4722817e6be1e3f0e636ec2e93ed334a15780d673ad7d4" );
+           
+        }
+        else
+        {
+            _TRACE("login req is sent");
+        }             
+    }
+    else
+    {
+           
+        _TRACE("norenApi is logged in");
+        
+        SignalBuy   = LastValue(Ref(aiBuy,-1));//we need to ignore last candle
+        SignalSell  = LastValue(Ref(aiSell,-1));
+        SignalShort = LastValue(Ref(aiShort,-1));
+        SignalCover = LastValue(Ref(aiCover,-1));
+
+        lasttime = StrFormat("%0.f",LastValue(BarIndex()));
+        current  = StaticVarGetText(uniq_name+"_current_position");  
+        lasteval = StaticVarGetText(uniq_name+"_lasteval");     
+        
+        if(flag == "START" && lasteval != lasttime)
+        {
+            _TRACE("Eval candle num :" + lasttime);
+            
+            if(current == "")
+            {
+                current = "None";           
+            }       
+            //set the eval time    
+            StaticVarSetText(uniq_name+"_lasteval", lasttime);  
+            
+            prc = NumToStr(LastValue(Ref(Close,-1)), 8.2, False);
+            //check for buy signal
+            if(current == "None" && SignalBuy==True)
+            {           
+                trgprc = "0";
+                dscqty = "0";
+                trantype = "B";
+                prctyp = "LMT";
+                ret = "DAY";
+                remarks = uniq_name;
+                    
+                NorenPlaceOrder(exch, tsym, NumToStr(qty), prc, trgprc, dscqty, prd, trantype, prctyp, ret, remarks);                    
+                StaticVarSetText(uniq_name+"_current_position", "Buy");  
+                _TRACE("Enter Buy :" + lasttime);
+            }
+            else if(current == "Buy" && SignalSell==True)
+            {
+                trgprc = "0";
+                dscqty = "0";
+                trantype = "S";
+                prctyp = "LMT";
+                ret = "DAY";
+                remarks = uniq_name;
+                    
+                NorenPlaceOrder(exch, tsym, NumToStr(qty), prc, trgprc, dscqty, prd, trantype, prctyp, ret, remarks);                    
+                StaticVarSetText(uniq_name+"_current_position", "None");  
+                _TRACE("Exit Buy : " + lasttime);
+            }            
+            else if(current == "None" && SignalShort==True )
+            {
+                trgprc = "0";
+                dscqty = "0";
+                trantype = "S";
+                prctyp = "LMT";
+                ret = "DAY";
+                remarks = uniq_name;
+                    
+                NorenPlaceOrder(exch, tsym, NumToStr(qty), prc, trgprc, dscqty, prd, trantype, prctyp, ret, remarks);                    
+                StaticVarSetText(uniq_name+"_current_position", "Short");  
+                _TRACE("Short : " + lasttime);
+            }
+            else if(current == "Short" && SignalCover==True )
+            {
+                trgprc = "0";
+                dscqty = "0";
+                trantype = "B";
+                prctyp = "LMT";
+                ret = "DAY";
+                remarks = uniq_name;
+                    
+                NorenPlaceOrder(exch, tsym, NumToStr(qty), prc, trgprc, dscqty, prd, trantype, prctyp, ret, remarks);                    
+                StaticVarSetText(uniq_name+"_current_position", "None");  
+                _TRACE("Cover : " + lasttime);
+            }  
+        }
+    }
+}
+            
+_SECTION_END();
+
